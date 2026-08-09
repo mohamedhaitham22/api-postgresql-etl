@@ -1,0 +1,73 @@
+[project]
+name = "API-PostgreSQL-etl"
+version = "0.1.0"
+description = "ETL pipeline that extracts data from the dummyjson API, transforms it, and loads it into PostgreSQL."
+readme = "README.md"
+requires-python = ">=3.12"
+
+authors = [
+    { name = "Mohamed" }
+]
+
+dependencies = [
+    # HTTP Requests
+    "requests>=2.32.5",
+
+    # Data Processing
+    "pandas>=2.3.2",
+
+    # PostgreSQL
+    "sqlalchemy>=2.0.43",
+    "psycopg2-binary>=2.9.10",
+
+    # Environment Variables
+    "pydantic>=2.11.7",
+    "pydantic-settings>=2.10.1",
+
+    # Logging (optional for now)
+    "colorlog>=6.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.4.1",
+    "pytest-cov>=6.2.1",
+    "ruff>=0.12.8",
+    "black>=25.1.0",
+    "mypy>=1.17.1",
+]
+
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "I",
+    "B",
+    "UP",
+    "TID",
+]
+
+ignore = []
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
