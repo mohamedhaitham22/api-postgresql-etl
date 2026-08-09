@@ -11,11 +11,8 @@ An end-to-end Python-based ETL (Extract, Transform, Load) data pipeline that ext
 - [Database Schema](#-database-schema)
 - [Project Structure](#-project-structure)
 - [Getting Started & Setup](#-getting-started--setup)
-  - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
-  - [Environment Configuration](#environment-configuration)
-  - [Database Initialization](#database-initialization)
-  - [Running the Pipeline](#running-the-pipeline)
+  - [Option 1: Docker & Airflow Setup (Recommended)](#option-1-docker--airflow-setup-recommended)
+  - [Option 2: Local Python Setup](#option-2-local-python-setup)
 - [Analytics & Verification](#-analytics--verification)
 
 ---
@@ -26,6 +23,8 @@ An end-to-end Python-based ETL (Extract, Transform, Load) data pipeline that ext
 - **Raw Persistence**: Saves raw timestamped JSON snapshots under `data/raw/` for auditing and data lineage.
 - **Transform**: Normalizes complex nested JSON payloads (dimensions, tags, reviews, metadata, images) into clean relational structures.
 - **Load (PostgreSQL)**: Transactionally upserts (`ON CONFLICT DO UPDATE / DO NOTHING`) data into PostgreSQL database tables.
+- **Orchestration**: Scheduled automated execution via **Apache Airflow** DAG (`product_etl_pipeline`).
+- **Containerized Stack**: Complete **Docker Compose** environment bundling PostgreSQL 17, pgAdmin 4, and Apache Airflow.
 - **Robust Configuration**: Strongly typed settings management powered by `pydantic-settings` reading from `.env`.
 - **Centralized Logging**: Formatted dual logging to file (`logs/etl.log`) and console output (`stdout`) for observability.
 
@@ -63,7 +62,10 @@ An end-to-end Python-based ETL (Extract, Transform, Load) data pipeline that ext
 ## 🛠️ Technologies Used
 
 - **Language**: Python 3.12+
-- **Database**: PostgreSQL
+- **Orchestration**: Apache Airflow 2.10+
+- **Containerization**: Docker & Docker Compose
+- **Database**: PostgreSQL 17
+- **Database Administration**: pgAdmin 4
 - **Database Connector**: SQLAlchemy 2.0+, `psycopg2-binary`
 - **HTTP Client**: `requests`
 - **Configuration & Validation**: Pydantic v2, `pydantic-settings`
@@ -91,6 +93,12 @@ The pipeline populates the **`raw`** schema in PostgreSQL:
 
 ```
 etl-fakestore/
+├── airflow/                  # Airflow DAGs, plugins, and execution logs
+│   └── dags/
+│       └── product_etl_dag.py # Airflow ETL DAG definition
+├── docker/                   # Docker build context
+│   ├── Dockerfile
+│   └── requirements.txt
 ├── sql/
 │   ├── creation.sql          # DDL script for PostgreSQL schema, tables, and indexes
 │   └── analytics_queries.sql # Analytical SQL queries for data reporting
@@ -106,6 +114,7 @@ etl-fakestore/
 │   └── main.py               # Main pipeline execution entrypoint
 ├── .env.example              # Template for environment variables
 ├── .gitignore                # Git ignore rules
+├── docker-compose.yml        # Multi-container orchestration (Airflow + PostgreSQL + pgAdmin)
 ├── pyproject.toml            # Python dependencies and build config
 └── README.md                 # Project documentation
 ```
@@ -114,12 +123,65 @@ etl-fakestore/
 
 ## ⚙️ Getting Started & Setup
 
-### Prerequisites
+Choose one of the setup options below to run the pipeline:
 
+### Option 1: Docker & Airflow Setup (Recommended)
+
+Run the complete pipeline stack—including PostgreSQL 17, pgAdmin 4, and Apache Airflow—in containerized environment using Docker Compose.
+
+#### Prerequisites
+- **Docker Engine** & **Docker Compose** installed on your system.
+
+#### 1. Environment Configuration
+Copy `.env.example` to create `.env`:
+
+```bash
+cp .env.example .env
+```
+Ensure all required configuration variables are populated in `.env`.
+
+#### 2. Launch Container Stack
+Start all services in detached mode:
+
+```bash
+docker compose up -d
+```
+
+This starts the following services:
+- **`airflow-postgres`**: PostgreSQL 17 container (Exposed on port `5433`).
+- **`pgadmin`**: pgAdmin 4 web management tool (Exposed on port `5050`).
+- **`airflow-init`**: One-time database migration and admin user creation task.
+- **`airflow-webserver`**: Airflow Web Interface (Exposed on port `8080`).
+- **`airflow-scheduler`**: Airflow Scheduler managing DAG execution.
+
+#### 3. Database Schema Initialization
+Execute `sql/creation.sql` against the running PostgreSQL container to create the `raw` schema and tables:
+
+```bash
+docker exec -i api-postgresql-etl-airflow-postgres psql -U postgres -d fakestore_db < sql/creation.sql
+```
+
+#### 4. Access Services & Run Pipeline
+- **Airflow Web UI**: Navigate to `http://localhost:8080` in your browser. Log in using the credentials defined in `.env` (default: `airflow` / `airflow`).
+- **Trigger DAG**: Unpause and trigger the **`product_etl_pipeline`** DAG to run the automated ETL process.
+- **pgAdmin**: Navigate to `http://localhost:5050` to inspect database tables visually.
+
+To stop the services:
+```bash
+docker compose down
+```
+
+---
+
+### Option 2: Local Python Setup
+
+Run the ETL pipeline directly on your local machine using Python and a local PostgreSQL instance.
+
+#### Prerequisites
 - **Python**: `3.12` or higher
 - **PostgreSQL**: Running PostgreSQL instance
 
-### 1. Installation
+#### 1. Installation
 
 ```bash
 # Clone the repository
@@ -139,7 +201,7 @@ source .etl-venv/bin/activate
 pip install -e .
 ```
 
-### 2. Environment Configuration
+#### 2. Environment Configuration
 
 Copy `.env.example` to `.env`:
 
@@ -147,40 +209,19 @@ Copy `.env.example` to `.env`:
 cp .env.example .env
 ```
 
-Set your values in `.env`:
-```env
-APP_NAME="Fake Store API Pipeline"
-APP_ENV="development"
+Set your local PostgreSQL connection settings in `.env`.
 
-API_BASE_URL="https://dummyjson.com"
-API_TIMEOUT=10
+#### 3. Database Initialization
 
-POSTGRES_HOST="localhost"
-POSTGRES_PORT=5432
-POSTGRES_DB="fakestore_db"
-POSTGRES_USER="postgres"
-POSTGRES_PASSWORD="your_password"
-POSTGRES_SCHEMA="raw"
-
-RAW_DATA_DIR="data/raw"
-PROCESSED_DATA_DIR="data/processed"
-
-LOG_LEVEL="INFO"
-LOG_DIRECTORY="logs"
-LOG_FILE_NAME="etl.log"
-```
-
-### 3. Database Initialization
-
-Execute [`sql/creation.sql`] in PostgreSQL to create the `raw` schema, tables, foreign keys, and indexes:
+Execute [`sql/creation.sql`] in PostgreSQL to create the `raw` schema and tables:
 
 ```bash
 psql -h localhost -U postgres -d fakestore_db -f sql/creation.sql
 ```
 
-### 4. Running the Pipeline
+#### 4. Running the Pipeline
 
-Execute the pipeline:
+Execute the pipeline directly:
 
 ```bash
 python -m src.main
