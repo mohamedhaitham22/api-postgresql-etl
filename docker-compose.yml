@@ -1,0 +1,211 @@
+name: api-postgresql-etl
+
+x-airflow-env: &airflow-env
+
+  # ==========================================================
+  # Airflow
+  # ==========================================================
+
+  AIRFLOW__CORE__EXECUTOR: ${AIRFLOW__CORE__EXECUTOR}
+  AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql://${AIRFLOW_DB_USER}:${AIRFLOW_DB_PASSWORD}@airflow-postgres:${AIRFLOW_DB_PORT}/${AIRFLOW_DB_NAME}
+  AIRFLOW__CORE__LOAD_EXAMPLES: ${AIRFLOW__CORE__LOAD_EXAMPLES}
+
+  # ==========================================================
+  # PostgreSQL
+  # ==========================================================
+
+  POSTGRES_HOST: ${POSTGRES_HOST}
+  POSTGRES_PORT: ${POSTGRES_PORT}
+  POSTGRES_DB: ${POSTGRES_DB}
+  POSTGRES_USER: ${POSTGRES_USER}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  POSTGRES_SCHEMA: ${POSTGRES_SCHEMA}
+
+  DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
+  
+  # ==========================================================
+  # API
+  # ==========================================================
+
+  API_BASE_URL: ${API_BASE_URL}
+  API_TIMEOUT: ${API_TIMEOUT}
+
+  # ==========================================================
+  # Logging
+  # ==========================================================
+
+  LOG_LEVEL: ${LOG_LEVEL}
+  LOG_DIRECTORY: ${LOG_DIRECTORY}
+  LOG_FILE_NAME: ${LOG_FILE_NAME}
+
+
+x-airflow-common: &airflow-common
+
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+
+  environment:
+    <<: *airflow-env
+
+  working_dir: /opt/airflow
+
+  volumes:
+
+    # Airflow DAGs
+    - ./airflow/dags:/opt/airflow/dags
+
+    # Airflow plugins
+    - ./airflow/plugins:/opt/airflow/plugins
+
+    # Airflow logs
+    - ./airflow/logs:/opt/airflow/logs
+
+    # Project source code
+    - ./src:/opt/airflow/src
+
+    # Raw / processed data
+    - ./data:/opt/airflow/data
+
+    # SQL scripts
+    - ./sql:/opt/airflow/sql:ro
+
+
+services:
+
+  # ==========================================================
+  # PostgreSQL
+  # ==========================================================
+
+  airflow-postgres:
+    image: postgres:17
+
+    container_name: api-postgresql-etl-airflow-postgres
+
+    environment:
+      POSTGRES_USER: ${AIRFLOW_DB_USER}
+      POSTGRES_PASSWORD: ${AIRFLOW_DB_PASSWORD}
+      POSTGRES_DB: ${AIRFLOW_DB_NAME}
+
+    ports:
+      - "5433:5432"
+
+    volumes:
+      - airflow-postgres-db:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${AIRFLOW_DB_USER} -d ${AIRFLOW_DB_NAME}"
+        ]
+
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    restart: unless-stopped
+
+
+  # ==========================================================
+  # pgAdmin
+  # ==========================================================
+
+  pgadmin:
+
+    image: dpage/pgadmin4:9
+
+    container_name: api-postgresql-etl-pgadmin
+
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+
+    ports:
+      - "5050:80"
+
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+
+    restart: unless-stopped
+
+
+  # ==========================================================
+  # Airflow Initialization
+  # ==========================================================
+
+  airflow-init:
+
+    <<: *airflow-common
+
+    container_name: api-postgresql-etl-airflow-init
+
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+
+    command: >
+      bash -c "
+      airflow db migrate &&
+      airflow users create
+      --username ${AIRFLOW_USERNAME}
+      --password ${AIRFLOW_PASSWORD}
+      --firstname ${AIRFLOW_FIRSTNAME}
+      --lastname ${AIRFLOW_LASTNAME}
+      --role ${AIRFLOW_ROLE}
+      --email ${AIRFLOW_EMAIL} || true
+      "
+
+    restart: "no"
+
+
+  # ==========================================================
+  # Airflow Webserver
+  # ==========================================================
+
+  airflow-webserver:
+
+    <<: *airflow-common
+
+    container_name: api-postgresql-etl-airflow-webserver
+
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+    command: airflow webserver
+
+    ports:
+      - "8080:8080"
+
+    restart: unless-stopped
+
+
+  # ==========================================================
+  # Airflow Scheduler
+  # ==========================================================
+
+  airflow-scheduler:
+
+    <<: *airflow-common
+
+    container_name: api-postgresql-etl-airflow-scheduler
+
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+    command: airflow scheduler
+
+    restart: unless-stopped
+
+
+volumes:
+
+  airflow-postgres-db:
+
+  pgadmin-data:
