@@ -1,0 +1,1 @@
+from src.extract.product import extract_products
