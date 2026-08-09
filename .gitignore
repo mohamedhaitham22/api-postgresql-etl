@@ -1,0 +1,17 @@
+# Environment configuration
+**/.etl-venv
+
+# VS Code Configuration
+**/.vscode/
+
+# Python cache
+**/__pycache__/
+
+# .env file
+**/.env
+
+# data files
+**/data/
+
+# Logs
+**/logs/
